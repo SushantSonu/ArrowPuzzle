@@ -4,8 +4,10 @@ import { ChevronLeft, ChevronRight, Flag, Lightbulb, Play, RotateCcw, Star, X } 
 import TopBar from "../../components/TopBar";
 import ArrowGlyph from "../../components/ArrowGlyph";
 import type { Progress } from "../../lib/storage";
+import type { DailyGameProps } from "../daily/types";
 import { DIR_ROTATION_DEG, type Dir } from "../../types";
 import {
+  generateRobotDaily,
   generateRobotLevel,
   hintDirection,
   runProgram,
@@ -20,11 +22,16 @@ interface RobotGameProps {
   progress: Progress;
   onProgressChange: (updater: (p: Progress) => Progress) => void;
   onBack: () => void;
+  daily?: DailyGameProps;
 }
 
-export default function RobotGame({ progress, onProgressChange, onBack }: RobotGameProps) {
+export default function RobotGame({ progress, onProgressChange, onBack, daily }: RobotGameProps) {
   const [levelNum, setLevelNum] = useState(1);
-  const level = useMemo<RobotLevel>(() => generateRobotLevel(levelNum), [levelNum]);
+  const level = useMemo<RobotLevel>(
+    () => (daily ? generateRobotDaily(daily.seed) : generateRobotLevel(levelNum)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [levelNum, daily]
+  );
   const [program, setProgram] = useState<Dir[]>([]);
   const [running, setRunning] = useState(false);
   const [runSteps, setRunSteps] = useState<RunStep[]>([]);
@@ -53,11 +60,23 @@ export default function RobotGame({ progress, onProgressChange, onBack }: RobotG
           const stars = starsForSolve(level, program.length);
           setEarnedStars(stars);
           setWon(true);
-          onProgressChange((p) => ({
-            ...p,
-            robotStars: { ...p.robotStars, [levelNum]: Math.max(p.robotStars[levelNum] ?? 0, stars) },
-            robotUnlocked: Math.max(p.robotUnlocked, levelNum + 1),
-          }));
+          if (!daily) {
+            onProgressChange((p) => ({
+              ...p,
+              robotStars: { ...p.robotStars, [levelNum]: Math.max(p.robotStars[levelNum] ?? 0, stars) },
+              robotUnlocked: Math.max(p.robotUnlocked, levelNum + 1),
+            }));
+          } else {
+            setTimeout(() => {
+              daily.onComplete({
+                success: true,
+                lines: [
+                  `${"⭐".repeat(stars)}${"☆".repeat(3 - stars)}`,
+                  `${program.length} commands (optimal: ${level.optimal})`,
+                ],
+              });
+            }, 1300);
+          }
         } else {
           setBumped(true);
           setTimeout(() => {
@@ -129,42 +148,46 @@ export default function RobotGame({ progress, onProgressChange, onBack }: RobotG
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col px-4 pb-8">
       <TopBar
-        title="Arrow Bot"
+        title={daily ? "Daily: Arrow Bot" : "Arrow Bot"}
         accent={ACCENT}
         onBack={onBack}
         right={
-          <div className="flex items-center justify-end gap-0.5">
-            {[1, 2, 3].map((n) => (
-              <Star
-                key={n}
-                size={13}
-                className={n <= stars ? "fill-sky-300 text-sky-300" : "text-white/15"}
-              />
-            ))}
-          </div>
+          !daily && (
+            <div className="flex items-center justify-end gap-0.5">
+              {[1, 2, 3].map((n) => (
+                <Star
+                  key={n}
+                  size={13}
+                  className={n <= stars ? "fill-sky-300 text-sky-300" : "text-white/15"}
+                />
+              ))}
+            </div>
+          )
         }
       />
 
-      <div className="mb-4 flex items-center justify-center gap-3">
-        <button
-          disabled={levelNum <= 1}
-          onClick={() => setLevelNum((l) => Math.max(1, l - 1))}
-          className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div className="min-w-[110px] text-center">
-          <div className="text-sm font-semibold text-white">Level {levelNum}</div>
-          <div className="text-xs text-white/40">Best path: {level.optimal} moves</div>
+      {!daily && (
+        <div className="mb-4 flex items-center justify-center gap-3">
+          <button
+            disabled={levelNum <= 1}
+            onClick={() => setLevelNum((l) => Math.max(1, l - 1))}
+            className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="min-w-[110px] text-center">
+            <div className="text-sm font-semibold text-white">Level {levelNum}</div>
+            <div className="text-xs text-white/40">Best path: {level.optimal} moves</div>
+          </div>
+          <button
+            disabled={levelNum + 1 > maxUnlocked}
+            onClick={() => setLevelNum((l) => l + 1)}
+            className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
-        <button
-          disabled={levelNum + 1 > maxUnlocked}
-          onClick={() => setLevelNum((l) => l + 1)}
-          className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
-        >
-          <ChevronRight size={18} />
-        </button>
-      </div>
+      )}
 
       <div className="relative mx-auto w-full max-w-[420px]">
         <motion.div
@@ -247,20 +270,22 @@ export default function RobotGame({ progress, onProgressChange, onBack }: RobotG
                 </div>
                 <div className="text-lg font-semibold text-white">Bot reached home!</div>
                 <div className="text-sm text-white/50">{program.length} commands used</div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={restart}
-                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
-                  >
-                    Replay
-                  </button>
-                  <button
-                    onClick={() => setLevelNum((l) => l + 1)}
-                    className="rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-sky-950 transition hover:bg-sky-300"
-                  >
-                    Next level
-                  </button>
-                </div>
+                {!daily && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={restart}
+                      className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
+                    >
+                      Replay
+                    </button>
+                    <button
+                      onClick={() => setLevelNum((l) => l + 1)}
+                      className="rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-sky-950 transition hover:bg-sky-300"
+                    >
+                      Next level
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

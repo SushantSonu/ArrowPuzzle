@@ -16,11 +16,7 @@ function key(c: Cell) {
   return `${c[0]},${c[1]}`;
 }
 
-export function generateRobotLevel(level: number): RobotLevel {
-  const size = Math.min(5 + Math.floor((level - 1) / 2), 9);
-  const targetLen = Math.min(6 + level, size * size - 1);
-  const rand = mulberry32(level * 40503 + 11);
-
+export function buildRobotLevel(size: number, targetLen: number, rand: () => number): RobotLevel {
   const best = bestSelfAvoidingPath(size, targetLen, rand);
   const pathSet = new Set(best.map(key));
   const walls = new Set<string>();
@@ -48,6 +44,19 @@ export function generateRobotLevel(level: number): RobotLevel {
     optimal: safeOptimal,
     twoStarMax: safeOptimal + 2,
   };
+}
+
+export function generateRobotLevel(level: number): RobotLevel {
+  const size = Math.min(5 + Math.floor((level - 1) / 2), 9);
+  const targetLen = Math.min(6 + level, size * size - 1);
+  return buildRobotLevel(size, targetLen, mulberry32(level * 40503 + 11));
+}
+
+export const ROBOT_DAILY_SIZE = 7;
+export const ROBOT_DAILY_LEN = 15;
+
+export function generateRobotDaily(seed: number): RobotLevel {
+  return buildRobotLevel(ROBOT_DAILY_SIZE, ROBOT_DAILY_LEN, mulberry32(seed));
 }
 
 export function starsForSolve(level: RobotLevel, commandsUsed: number): 1 | 2 | 3 {

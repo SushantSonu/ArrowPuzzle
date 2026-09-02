@@ -6,11 +6,14 @@ import ConnectGame from "./games/connect/ConnectGame";
 import SlideGame from "./games/slide/SlideGame";
 import RobotGame from "./games/robot/RobotGame";
 import TraceGame from "./games/trace/TraceGame";
+import DailyChallenge from "./games/daily/DailyChallenge";
 import { loadProgress, saveProgress, type Progress } from "./lib/storage";
 import type { ModeId } from "./types";
 
+type Screen = ModeId | "daily" | null;
+
 export default function App() {
-  const [mode, setMode] = useState<ModeId | null>(null);
+  const [mode, setMode] = useState<Screen>(null);
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
 
   useEffect(() => {
@@ -32,7 +35,18 @@ export default function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <Home progress={progress} onSelect={setMode} />
+            <Home progress={progress} onSelect={setMode} onPlayDaily={() => setMode("daily")} />
+          </motion.div>
+        )}
+        {mode === "daily" && (
+          <motion.div
+            key="daily"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <DailyChallenge progress={progress} onProgressChange={onProgressChange} onBack={() => setMode(null)} />
           </motion.div>
         )}
         {mode === "clear" && (

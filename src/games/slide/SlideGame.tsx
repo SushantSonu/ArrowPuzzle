@@ -4,8 +4,10 @@ import { Lightbulb, RotateCcw, Trophy, Skull } from "lucide-react";
 import TopBar from "../../components/TopBar";
 import ArrowGlyph from "../../components/ArrowGlyph";
 import type { Progress } from "../../lib/storage";
+import type { DailyGameProps } from "../daily/types";
 import type { Dir } from "../../types";
 import { DIR_ROTATION_DEG } from "../../types";
+import { mulberry32 } from "../../lib/rng";
 import {
   SLIDE_SIZE,
   hasMovesAvailable,
@@ -47,15 +49,18 @@ interface SlideGameProps {
   progress: Progress;
   onProgressChange: (updater: (p: Progress) => Progress) => void;
   onBack: () => void;
+  daily?: DailyGameProps;
 }
 
-export default function SlideGame({ progress, onProgressChange, onBack }: SlideGameProps) {
-  const [tiles, setTiles] = useState<SlideTile[]>(() => newGame());
+export default function SlideGame({ progress, onProgressChange, onBack, daily }: SlideGameProps) {
+  const randRef = useRef<() => number>(daily ? mulberry32(daily.seed) : Math.random);
+  const [tiles, setTiles] = useState<SlideTile[]>(() => newGame(randRef.current));
   const [score, setScore] = useState(0);
   const [won, setWon] = useState(false);
   const [continued, setContinued] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [hintDir, setHintDir] = useState<Dir | null>(null);
+  const finalizedRef = useRef(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   const applyMove = useCallback(
@@ -65,19 +70,27 @@ export default function SlideGame({ progress, onProgressChange, onBack }: SlideG
       setTiles((prev) => {
         const result = move(prev, dir);
         if (!result.moved) return prev;
-        const withSpawn = spawnRandomTile(result.tiles);
-        setScore((s) => {
-          const newScore = s + result.scoreDelta;
-          onProgressChange((p) => ({ ...p, slideBest: Math.max(p.slideBest, newScore) }));
-          return newScore;
-        });
+        const withSpawn = spawnRandomTile(result.tiles, randRef.current);
+        const newScore = score + result.scoreDelta;
+        setScore(newScore);
+        if (!daily) onProgressChange((p) => ({ ...p, slideBest: Math.max(p.slideBest, newScore) }));
         const top = maxValue(withSpawn);
         if (top >= 2048 && !won) setWon(true);
-        if (!hasMovesAvailable(withSpawn)) setGameOver(true);
+        const over = !hasMovesAvailable(withSpawn);
+        if (over) setGameOver(true);
+        if (daily && !finalizedRef.current && (top >= 2048 || over)) {
+          finalizedRef.current = true;
+          setTimeout(() => {
+            daily.onComplete({
+              success: top >= 2048,
+              lines: [`Score: ${newScore}`, `Best tile: ${top}`],
+            });
+          }, 1300);
+        }
         return withSpawn;
       });
     },
-    [gameOver, won, continued, onProgressChange]
+    [gameOver, won, continued, daily, onProgressChange, score]
   );
 
   useEffect(() => {
@@ -103,7 +116,9 @@ export default function SlideGame({ progress, onProgressChange, onBack }: SlideG
   }, [applyMove]);
 
   function restart() {
-    setTiles(newGame());
+    randRef.current = daily ? mulberry32(daily.seed) : Math.random;
+    finalizedRef.current = false;
+    setTiles(newGame(randRef.current));
     setScore(0);
     setWon(false);
     setContinued(false);
@@ -142,13 +157,13 @@ export default function SlideGame({ progress, onProgressChange, onBack }: SlideG
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col px-4 pb-8">
       <TopBar
-        title="Arrow Slide"
+        title={daily ? "Daily: Arrow Slide" : "Arrow Slide"}
         accent={ACCENT}
         onBack={onBack}
         right={
           <div className="text-right leading-tight">
             <div className="text-sm font-semibold text-white">{score}</div>
-            <div className="text-[10px] text-white/40">best {progress.slideBest}</div>
+            {!daily && <div className="text-[10px] text-white/40">best {progress.slideBest}</div>}
           </div>
         }
       />
@@ -246,12 +261,14 @@ export default function SlideGame({ progress, onProgressChange, onBack }: SlideG
                 </div>
                 <div className="text-lg font-semibold text-white">No more moves</div>
                 <div className="text-sm text-white/50">Score: {score}</div>
-                <button
-                  onClick={restart}
-                  className="mt-2 rounded-full bg-amber-400 px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-300"
-                >
-                  Try again
-                </button>
+                {!daily && (
+                  <button
+                    onClick={restart}
+                    className="mt-2 rounded-full bg-amber-400 px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-300"
+                  >
+                    Try again
+                  </button>
+                )}
               </motion.div>
             )}
             {won && !continued && !gameOver && (
@@ -271,20 +288,22 @@ export default function SlideGame({ progress, onProgressChange, onBack }: SlideG
                 </motion.div>
                 <div className="text-lg font-semibold text-white">You reached 2048!</div>
                 <div className="text-sm text-white/50">Score: {score}</div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={restart}
-                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
-                  >
-                    New game
-                  </button>
-                  <button
-                    onClick={() => setContinued(true)}
-                    className="rounded-full bg-amber-400 px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-300"
-                  >
-                    Keep going
-                  </button>
-                </div>
+                {!daily && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={restart}
+                      className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
+                    >
+                      New game
+                    </button>
+                    <button
+                      onClick={() => setContinued(true)}
+                      className="rounded-full bg-amber-400 px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-300"
+                    >
+                      Keep going
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

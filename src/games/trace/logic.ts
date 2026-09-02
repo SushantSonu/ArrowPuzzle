@@ -30,14 +30,18 @@ export function livesForLevel(level: number): number {
   return difficulty === "Easy" ? 4 : difficulty === "Normal" ? 3 : 2;
 }
 
-export function generateTraceLevel(level: number): TraceBoard {
-  const { size } = levelConfig(level);
-  const rand = mulberry32(level * 97711 + 31);
-
-  const shape = shapeForLevel(level);
+export function buildTraceBoard(
+  size: number,
+  shapeIndex: number,
+  targetLenBonus: number,
+  rand: () => number,
+  difficulty: Difficulty,
+  lives: number
+): TraceBoard {
+  const shape = shapeForLevel(shapeIndex);
   const { mask, name } = buildMask(size, shape);
   const allowed = (cell: Cell) => mask.has(`${cell[0]},${cell[1]}`);
-  const targetLen = Math.min(Math.round(mask.size * 0.6) + level, mask.size - 1);
+  const targetLen = Math.min(Math.round(mask.size * 0.6) + targetLenBonus, mask.size - 1);
 
   let best: Cell[] = [];
   for (let restart = 0; restart < 8; restart++) {
@@ -47,14 +51,31 @@ export function generateTraceLevel(level: number): TraceBoard {
   }
   if (best.length < 2) best = [[0, 0], [Math.min(1, size - 1), 0]];
 
-  return {
+  return { size, path: best, mask, shape: name, difficulty, lives };
+}
+
+export function generateTraceLevel(level: number): TraceBoard {
+  const { size } = levelConfig(level);
+  return buildTraceBoard(
     size,
-    path: best,
-    mask,
-    shape: name,
-    difficulty: difficultyForLevel(level),
-    lives: livesForLevel(level),
-  };
+    level,
+    level,
+    mulberry32(level * 97711 + 31),
+    difficultyForLevel(level),
+    livesForLevel(level)
+  );
+}
+
+export const TRACE_DAILY_SIZE = 7;
+
+/**
+ * `shapeCycleIndex` should count how many times Trace has come up as the daily
+ * mode so far (not the raw puzzle number) — since the mode rotation and the 5
+ * shapes share a period of 5, indexing by puzzle number would always land on
+ * the same shape.
+ */
+export function generateTraceDaily(seed: number, shapeCycleIndex: number): TraceBoard {
+  return buildTraceBoard(TRACE_DAILY_SIZE, shapeCycleIndex + 1, 8, mulberry32(seed), "Normal", 3);
 }
 
 function dirBetween(a: Cell, b: Cell): Dir {

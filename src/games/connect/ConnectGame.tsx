@@ -4,8 +4,9 @@ import { ChevronLeft, ChevronRight, Flag, Lightbulb, RotateCcw, Trophy } from "l
 import TopBar from "../../components/TopBar";
 import ArrowGlyph from "../../components/ArrowGlyph";
 import type { Progress } from "../../lib/storage";
+import type { DailyGameProps } from "../daily/types";
 import { DIR_ROTATION_DEG } from "../../types";
-import { connectedCount, generateConnectLevel, rotateTile, type ConnectBoard } from "./logic";
+import { connectedCount, generateConnectDaily, generateConnectLevel, rotateTile, type ConnectBoard } from "./logic";
 
 const ACCENT = "#a78bfa";
 
@@ -13,6 +14,7 @@ interface ConnectGameProps {
   progress: Progress;
   onProgressChange: (updater: (p: Progress) => Progress) => void;
   onBack: () => void;
+  daily?: DailyGameProps;
 }
 
 function formatTime(sec: number) {
@@ -21,18 +23,24 @@ function formatTime(sec: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function ConnectGame({ progress, onProgressChange, onBack }: ConnectGameProps) {
+export default function ConnectGame({ progress, onProgressChange, onBack, daily }: ConnectGameProps) {
   const [level, setLevel] = useState(1);
-  const [board, setBoard] = useState<ConnectBoard>(() => generateConnectLevel(1));
+  const [board, setBoard] = useState<ConnectBoard>(() =>
+    daily ? generateConnectDaily(daily.seed) : generateConnectLevel(1)
+  );
   const [seconds, setSeconds] = useState(0);
   const [won, setWon] = useState(false);
   const [hintOn, setHintOn] = useState(false);
+  const [taps, setTaps] = useState(0);
 
   useEffect(() => {
+    if (daily) return;
     setBoard(generateConnectLevel(level));
     setSeconds(0);
     setWon(false);
     setHintOn(false);
+    setTaps(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level]);
 
   useEffect(() => {
@@ -41,15 +49,25 @@ export default function ConnectGame({ progress, onProgressChange, onBack }: Conn
     return () => clearInterval(id);
   }, [won, level]);
 
+  useEffect(() => {
+    if (!won || !daily) return;
+    const t = setTimeout(() => {
+      daily.onComplete({ success: true, lines: [`Connected in ${formatTime(seconds)}`, `${taps} rotations`] });
+    }, 1300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [won, daily]);
+
   const connected = connectedCount(board);
   const total = board.tiles.length;
   const maxUnlocked = progress.connectUnlocked;
 
   function restart() {
-    setBoard(generateConnectLevel(level));
+    setBoard(daily ? generateConnectDaily(daily.seed) : generateConnectLevel(level));
     setSeconds(0);
     setWon(false);
     setHintOn(false);
+    setTaps(0);
   }
 
   function showHint() {
@@ -61,21 +79,24 @@ export default function ConnectGame({ progress, onProgressChange, onBack }: Conn
   function handleTap(uid: number) {
     if (won) return;
     setHintOn(false);
+    setTaps((t) => t + 1);
     const next = rotateTile(board, uid);
     setBoard(next);
     if (connectedCount(next) === next.tiles.length) {
       setWon(true);
-      onProgressChange((p) => {
-        const best = p.connectBestSeconds[level];
-        return {
-          ...p,
-          connectBestSeconds: {
-            ...p.connectBestSeconds,
-            [level]: best ? Math.min(best, seconds) : seconds,
-          },
-          connectUnlocked: Math.max(p.connectUnlocked, level + 1),
-        };
-      });
+      if (!daily) {
+        onProgressChange((p) => {
+          const best = p.connectBestSeconds[level];
+          return {
+            ...p,
+            connectBestSeconds: {
+              ...p.connectBestSeconds,
+              [level]: best ? Math.min(best, seconds) : seconds,
+            },
+            connectUnlocked: Math.max(p.connectUnlocked, level + 1),
+          };
+        });
+      }
     }
   }
 
@@ -84,34 +105,36 @@ export default function ConnectGame({ progress, onProgressChange, onBack }: Conn
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col px-4 pb-8">
       <TopBar
-        title="Arrow Connect"
+        title={daily ? "Daily: Arrow Connect" : "Arrow Connect"}
         accent={ACCENT}
         onBack={onBack}
         right={<span>{formatTime(seconds)}</span>}
       />
 
-      <div className="mb-4 flex items-center justify-center gap-3">
-        <button
-          disabled={level <= 1}
-          onClick={() => setLevel((l) => Math.max(1, l - 1))}
-          className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div className="min-w-[110px] text-center">
-          <div className="text-sm font-semibold text-white">Level {level}</div>
-          <div className="text-xs text-white/40">
-            {best !== undefined ? `Best: ${formatTime(best)}` : "Unsolved"}
+      {!daily && (
+        <div className="mb-4 flex items-center justify-center gap-3">
+          <button
+            disabled={level <= 1}
+            onClick={() => setLevel((l) => Math.max(1, l - 1))}
+            className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="min-w-[110px] text-center">
+            <div className="text-sm font-semibold text-white">Level {level}</div>
+            <div className="text-xs text-white/40">
+              {best !== undefined ? `Best: ${formatTime(best)}` : "Unsolved"}
+            </div>
           </div>
+          <button
+            disabled={level + 1 > maxUnlocked}
+            onClick={() => setLevel((l) => l + 1)}
+            className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
-        <button
-          disabled={level + 1 > maxUnlocked}
-          onClick={() => setLevel((l) => l + 1)}
-          className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
-        >
-          <ChevronRight size={18} />
-        </button>
-      </div>
+      )}
 
       <div className="relative mx-auto w-full max-w-[420px]">
         <div
@@ -212,20 +235,22 @@ export default function ConnectGame({ progress, onProgressChange, onBack }: Conn
                 </motion.div>
                 <div className="text-lg font-semibold text-white">Path connected!</div>
                 <div className="text-sm text-white/50">{formatTime(seconds)}</div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={restart}
-                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
-                  >
-                    Replay
-                  </button>
-                  <button
-                    onClick={() => setLevel((l) => l + 1)}
-                    className="rounded-full bg-violet-400 px-4 py-2 text-sm font-semibold text-violet-950 transition hover:bg-violet-300"
-                  >
-                    Next level
-                  </button>
-                </div>
+                {!daily && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={restart}
+                      className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
+                    >
+                      Replay
+                    </button>
+                    <button
+                      onClick={() => setLevel((l) => l + 1)}
+                      className="rounded-full bg-violet-400 px-4 py-2 text-sm font-semibold text-violet-950 transition hover:bg-violet-300"
+                    >
+                      Next level
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

@@ -18,6 +18,21 @@ export function saveJSON(key: string, value: unknown) {
   }
 }
 
+export interface DailyResult {
+  dateKey: string;
+  puzzleNumber: number;
+  mode: string;
+  success: boolean;
+  lines: string[]; // shareable summary lines, mode-specific
+}
+
+export interface DailyProgress {
+  streak: number;
+  bestStreak: number;
+  lastCompletedDate?: string;
+  history: Record<string, DailyResult>; // dateKey -> result
+}
+
 export interface Progress {
   clearBestMoves: Record<number, number>; // level -> best move count
   clearUnlocked: number;
@@ -28,6 +43,7 @@ export interface Progress {
   robotUnlocked: number;
   traceBestSeconds: Record<number, number>;
   traceUnlocked: number;
+  daily: DailyProgress;
 }
 
 export const defaultProgress: Progress = {
@@ -40,6 +56,7 @@ export const defaultProgress: Progress = {
   robotUnlocked: 1,
   traceBestSeconds: {},
   traceUnlocked: 1,
+  daily: { streak: 0, bestStreak: 0, history: {} },
 };
 
 export function loadProgress(): Progress {

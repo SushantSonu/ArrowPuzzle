@@ -5,7 +5,16 @@ import TopBar from "../../components/TopBar";
 import ArrowGlyph from "../../components/ArrowGlyph";
 import { DIR_ROTATION_DEG, DIR_VECTOR } from "../../types";
 import type { Progress } from "../../lib/storage";
-import { applyMove, findHint, generateClearLevel, type ClearBoard, type ClearTile } from "./logic";
+import type { DailyGameProps } from "../daily/types";
+import {
+  applyMove,
+  CLEAR_DAILY_COUNT,
+  findHint,
+  generateClearDaily,
+  generateClearLevel,
+  type ClearBoard,
+  type ClearTile,
+} from "./logic";
 
 const ACCENT = "#34d399";
 
@@ -17,11 +26,14 @@ interface ClearGameProps {
   progress: Progress;
   onProgressChange: (updater: (p: Progress) => Progress) => void;
   onBack: () => void;
+  daily?: DailyGameProps;
 }
 
-export default function ClearGame({ progress, onProgressChange, onBack }: ClearGameProps) {
+export default function ClearGame({ progress, onProgressChange, onBack, daily }: ClearGameProps) {
   const [level, setLevel] = useState(1);
-  const [board, setBoard] = useState<ClearBoard>(() => generateClearLevel(1));
+  const [board, setBoard] = useState<ClearBoard>(() =>
+    daily ? generateClearDaily(daily.seed) : generateClearLevel(1)
+  );
   const [moves, setMoves] = useState(0);
   const [exiting, setExiting] = useState<ExitingTile[]>([]);
   const [shakeUid, setShakeUid] = useState<number | null>(null);
@@ -29,18 +41,35 @@ export default function ClearGame({ progress, onProgressChange, onBack }: ClearG
   const [hintUid, setHintUid] = useState<number | null>(null);
 
   useEffect(() => {
+    if (daily) return;
     setBoard(generateClearLevel(level));
     setMoves(0);
     setExiting([]);
     setWon(false);
     setHintUid(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level]);
+
+  useEffect(() => {
+    if (!won || !daily) return;
+    const t = setTimeout(() => {
+      daily.onComplete({
+        success: true,
+        lines: [
+          `Cleared in ${moves} moves`,
+          moves <= CLEAR_DAILY_COUNT ? "Optimal solve! 🎯" : `Optimal was ${CLEAR_DAILY_COUNT}`,
+        ],
+      });
+    }, 1300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [won, daily]);
 
   const remaining = board.tiles.length;
   const maxUnlocked = progress.clearUnlocked;
 
   function restart() {
-    setBoard(generateClearLevel(level));
+    setBoard(daily ? generateClearDaily(daily.seed) : generateClearLevel(level));
     setMoves(0);
     setExiting([]);
     setWon(false);
@@ -73,18 +102,20 @@ export default function ClearGame({ progress, onProgressChange, onBack }: ClearG
     setBoard({ ...board, tiles: result.tiles });
     if (result.tiles.length === 0) {
       setWon(true);
-      onProgressChange((p) => {
-        const best = p.clearBestMoves[level];
-        const nextMoves = moves + 1;
-        return {
-          ...p,
-          clearBestMoves: {
-            ...p.clearBestMoves,
-            [level]: best ? Math.min(best, nextMoves) : nextMoves,
-          },
-          clearUnlocked: Math.max(p.clearUnlocked, level + 1),
-        };
-      });
+      if (!daily) {
+        onProgressChange((p) => {
+          const best = p.clearBestMoves[level];
+          const nextMoves = moves + 1;
+          return {
+            ...p,
+            clearBestMoves: {
+              ...p.clearBestMoves,
+              [level]: best ? Math.min(best, nextMoves) : nextMoves,
+            },
+            clearUnlocked: Math.max(p.clearUnlocked, level + 1),
+          };
+        });
+      }
     }
   }
 
@@ -98,32 +129,34 @@ export default function ClearGame({ progress, onProgressChange, onBack }: ClearG
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col px-4 pb-8">
       <TopBar
-        title="Arrow Clear"
+        title={daily ? "Daily: Arrow Clear" : "Arrow Clear"}
         accent={ACCENT}
         onBack={onBack}
         right={<span>{moves} moves</span>}
       />
 
-      <div className="mb-4 flex items-center justify-center gap-3">
-        <button
-          disabled={level <= 1}
-          onClick={() => setLevel((l) => Math.max(1, l - 1))}
-          className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div className="min-w-[110px] text-center">
-          <div className="text-sm font-semibold text-white">Level {level}</div>
-          <div className="text-xs text-white/40">{best ? `Best: ${best} moves` : "Unsolved"}</div>
+      {!daily && (
+        <div className="mb-4 flex items-center justify-center gap-3">
+          <button
+            disabled={level <= 1}
+            onClick={() => setLevel((l) => Math.max(1, l - 1))}
+            className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="min-w-[110px] text-center">
+            <div className="text-sm font-semibold text-white">Level {level}</div>
+            <div className="text-xs text-white/40">{best ? `Best: ${best} moves` : "Unsolved"}</div>
+          </div>
+          <button
+            disabled={level + 1 > maxUnlocked}
+            onClick={() => setLevel((l) => l + 1)}
+            className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
-        <button
-          disabled={level + 1 > maxUnlocked}
-          onClick={() => setLevel((l) => l + 1)}
-          className="rounded-full bg-white/5 p-2 text-white/60 transition enabled:hover:bg-white/10 enabled:hover:text-white disabled:opacity-30"
-        >
-          <ChevronRight size={18} />
-        </button>
-      </div>
+      )}
 
       <div className="relative mx-auto w-full max-w-[420px]">
         <div
@@ -204,20 +237,22 @@ export default function ClearGame({ progress, onProgressChange, onBack }: ClearG
                 </motion.div>
                 <div className="text-lg font-semibold text-white">Board cleared!</div>
                 <div className="text-sm text-white/50">{moves} moves</div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={restart}
-                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
-                  >
-                    Replay
-                  </button>
-                  <button
-                    onClick={() => setLevel((l) => l + 1)}
-                    className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300"
-                  >
-                    Next level
-                  </button>
-                </div>
+                {!daily && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={restart}
+                      className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15"
+                    >
+                      Replay
+                    </button>
+                    <button
+                      onClick={() => setLevel((l) => l + 1)}
+                      className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300"
+                    >
+                      Next level
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

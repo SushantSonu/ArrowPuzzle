@@ -13,13 +13,15 @@ import {
 } from "lucide-react";
 import ArrowGlyph from "../../components/ArrowGlyph";
 import type { Progress } from "../../lib/storage";
+import type { DailyGameProps } from "../daily/types";
 import { DIR_ROTATION_DEG } from "../../types";
-import { generateTraceLevel, pathDirs, type TraceBoard } from "./logic";
+import { generateTraceDaily, generateTraceLevel, pathDirs, type TraceBoard } from "./logic";
 
 interface TraceGameProps {
   progress: Progress;
   onProgressChange: (updater: (p: Progress) => Progress) => void;
   onBack: () => void;
+  daily?: DailyGameProps;
 }
 
 function formatTime(sec: number) {
@@ -28,9 +30,11 @@ function formatTime(sec: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function TraceGame({ progress, onProgressChange, onBack }: TraceGameProps) {
+export default function TraceGame({ progress, onProgressChange, onBack, daily }: TraceGameProps) {
   const [level, setLevel] = useState(1);
-  const [board, setBoard] = useState<TraceBoard>(() => generateTraceLevel(1));
+  const [board, setBoard] = useState<TraceBoard>(() =>
+    daily ? generateTraceDaily(daily.seed, daily.occurrence) : generateTraceLevel(1)
+  );
   const [tracedCount, setTracedCount] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [mistake, setMistake] = useState(false);
@@ -49,6 +53,7 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
   }, [board]);
 
   useEffect(() => {
+    if (daily) return;
     const fresh = generateTraceLevel(level);
     setBoard(fresh);
     setTracedCount(0);
@@ -58,6 +63,7 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
     setHintUntil(null);
     setLives(fresh.lives);
     setOutOfLives(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level]);
 
   useEffect(() => {
@@ -66,8 +72,17 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
     return () => clearInterval(id);
   }, [won, outOfLives, level]);
 
+  useEffect(() => {
+    if (!outOfLives || !daily) return;
+    const t = setTimeout(() => {
+      daily.onComplete({ success: false, lines: ["Out of hearts 💔", `Reached ${tracedCount}/${board.path.length}`] });
+    }, 1300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outOfLives, daily]);
+
   function restart() {
-    const fresh = generateTraceLevel(level);
+    const fresh = daily ? generateTraceDaily(daily.seed, daily.occurrence) : generateTraceLevel(level);
     setBoard(fresh);
     setTracedCount(0);
     setDragging(false);
@@ -142,14 +157,21 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
   function finishWin() {
     setDragging(false);
     setWon(true);
-    onProgressChange((p) => {
-      const best = p.traceBestSeconds[level];
-      return {
-        ...p,
-        traceBestSeconds: { ...p.traceBestSeconds, [level]: best ? Math.min(best, seconds) : seconds },
-        traceUnlocked: Math.max(p.traceUnlocked, level + 1),
-      };
-    });
+    if (!daily) {
+      onProgressChange((p) => {
+        const best = p.traceBestSeconds[level];
+        return {
+          ...p,
+          traceBestSeconds: { ...p.traceBestSeconds, [level]: best ? Math.min(best, seconds) : seconds },
+          traceUnlocked: Math.max(p.traceUnlocked, level + 1),
+        };
+      });
+    } else {
+      const heartLine = "❤️".repeat(lives) + "🖤".repeat(board.lives - lives);
+      setTimeout(() => {
+        daily.onComplete({ success: true, lines: [`Solved in ${formatTime(seconds)}`, heartLine] });
+      }, 1300);
+    }
   }
 
   const maxUnlocked = progress.traceUnlocked;
@@ -171,7 +193,7 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
             <ChevronLeft size={22} />
           </button>
           <div className="text-center">
-            <div className="text-lg font-bold text-neutral-900">Level {level}</div>
+            <div className="text-lg font-bold text-neutral-900">{daily ? "Daily Puzzle" : `Level ${level}`}</div>
             <div className="text-[11px] text-neutral-400">{formatTime(seconds)}</div>
           </div>
           <button className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100">
@@ -197,22 +219,24 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
           </span>
         </div>
 
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <button
-            disabled={level <= 1}
-            onClick={() => setLevel((l) => Math.max(1, l - 1))}
-            className="text-xs font-medium text-neutral-300 transition enabled:text-blue-500 disabled:opacity-0"
-          >
-            ‹ Prev
-          </button>
-          <button
-            disabled={level + 1 > maxUnlocked}
-            onClick={() => setLevel((l) => l + 1)}
-            className="text-xs font-medium text-neutral-300 transition enabled:text-blue-500 disabled:opacity-0"
-          >
-            Next ›
-          </button>
-        </div>
+        {!daily && (
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <button
+              disabled={level <= 1}
+              onClick={() => setLevel((l) => Math.max(1, l - 1))}
+              className="text-xs font-medium text-neutral-300 transition enabled:text-blue-500 disabled:opacity-0"
+            >
+              ‹ Prev
+            </button>
+            <button
+              disabled={level + 1 > maxUnlocked}
+              onClick={() => setLevel((l) => l + 1)}
+              className="text-xs font-medium text-neutral-300 transition enabled:text-blue-500 disabled:opacity-0"
+            >
+              Next ›
+            </button>
+          </div>
+        )}
 
         <div className="relative mx-auto mt-4 w-full max-w-[420px]">
           <motion.div
@@ -331,12 +355,14 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
                   </div>
                   <div className="text-lg font-bold text-neutral-900">Out of hearts</div>
                   <div className="text-sm text-neutral-500">Landed on the wrong arrow too many times.</div>
-                  <button
-                    onClick={restart}
-                    className="mt-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
-                  >
-                    Try again
-                  </button>
+                  {!daily && (
+                    <button
+                      onClick={restart}
+                      className="mt-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+                    >
+                      Try again
+                    </button>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -359,20 +385,22 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
                   </motion.div>
                   <div className="text-lg font-bold text-neutral-900">Path traced!</div>
                   <div className="text-sm text-neutral-500">{formatTime(seconds)}</div>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={restart}
-                      className="rounded-full bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-200"
-                    >
-                      Replay
-                    </button>
-                    <button
-                      onClick={() => setLevel((l) => l + 1)}
-                      className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
-                    >
-                      Next level
-                    </button>
-                  </div>
+                  {!daily && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={restart}
+                        className="rounded-full bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-200"
+                      >
+                        Replay
+                      </button>
+                      <button
+                        onClick={() => setLevel((l) => l + 1)}
+                        className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+                      >
+                        Next level
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -389,15 +417,17 @@ export default function TraceGame({ progress, onProgressChange, onBack }: TraceG
               </span>
               <span className="text-[11px] font-medium">Hint</span>
             </button>
-            <button
-              onClick={restart}
-              className="flex flex-col items-center gap-1 text-neutral-500 transition hover:text-blue-600"
-            >
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 shadow-sm">
-                <RotateCcw size={19} />
-              </span>
-              <span className="text-[11px] font-medium">Restart</span>
-            </button>
+            {!daily && (
+              <button
+                onClick={restart}
+                className="flex flex-col items-center gap-1 text-neutral-500 transition hover:text-blue-600"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 shadow-sm">
+                  <RotateCcw size={19} />
+                </span>
+                <span className="text-[11px] font-medium">Restart</span>
+              </button>
+            )}
           </div>
         </div>
 

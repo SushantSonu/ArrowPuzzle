@@ -33,10 +33,7 @@ function dirBetween(a: [number, number], b: [number, number]): Dir {
   })!;
 }
 
-export function generateConnectLevel(level: number): ConnectBoard {
-  const { size, targetLen } = levelConfig(level);
-  const rand = mulberry32(level * 65599 + 7);
-
+export function buildConnectBoard(size: number, targetLen: number, rand: () => number): ConnectBoard {
   let best = bestSelfAvoidingPath(size, targetLen, rand);
   if (best.length < 2) best = [[0, 0], [Math.min(1, size - 1), 0]];
 
@@ -59,6 +56,18 @@ export function generateConnectLevel(level: number): ConnectBoard {
   }
 
   return { size, tiles, end: { x: end[0], y: end[1] } };
+}
+
+export function generateConnectLevel(level: number): ConnectBoard {
+  const { size, targetLen } = levelConfig(level);
+  return buildConnectBoard(size, targetLen, mulberry32(level * 65599 + 7));
+}
+
+export const CONNECT_DAILY_SIZE = 6;
+export const CONNECT_DAILY_LEN = 13;
+
+export function generateConnectDaily(seed: number): ConnectBoard {
+  return buildConnectBoard(CONNECT_DAILY_SIZE, CONNECT_DAILY_LEN, mulberry32(seed));
 }
 
 export function rotateTile(board: ConnectBoard, uid: number): ConnectBoard {

@@ -31,19 +31,19 @@ export function emptyCells(tiles: SlideTile[]): [number, number][] {
   return cells;
 }
 
-export function spawnRandomTile(tiles: SlideTile[]): SlideTile[] {
+export function spawnRandomTile(tiles: SlideTile[], rand: () => number = Math.random): SlideTile[] {
   const cells = emptyCells(tiles);
   if (cells.length === 0) return tiles;
-  const [r, c] = cells[Math.floor(Math.random() * cells.length)];
-  const value = Math.random() < 0.9 ? 2 : 4;
+  const [r, c] = cells[Math.floor(rand() * cells.length)];
+  const value = rand() < 0.9 ? 2 : 4;
   return [...tiles.map((t) => ({ ...t, justMerged: false, isNew: false })), makeTile(r, c, value, { isNew: true })];
 }
 
-export function newGame(): SlideTile[] {
+export function newGame(rand: () => number = Math.random): SlideTile[] {
   resetIds();
   let tiles: SlideTile[] = [];
-  tiles = spawnRandomTile(tiles);
-  tiles = spawnRandomTile(tiles);
+  tiles = spawnRandomTile(tiles, rand);
+  tiles = spawnRandomTile(tiles, rand);
   return tiles;
 }
 

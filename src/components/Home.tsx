@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Bot, Grid3x3, Route, Rows3, Waypoints, ChevronRight } from "lucide-react";
 import type { ModeId } from "../types";
 import type { Progress } from "../lib/storage";
+import DailyCard from "./DailyCard";
 
 interface Mode {
   id: ModeId;
@@ -93,9 +94,10 @@ function modeSubtitle(mode: ModeId, progress: Progress): string {
 interface HomeProps {
   progress: Progress;
   onSelect: (mode: ModeId) => void;
+  onPlayDaily: () => void;
 }
 
-export default function Home({ progress, onSelect }: HomeProps) {
+export default function Home({ progress, onSelect, onPlayDaily }: HomeProps) {
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col px-5 pb-10 pt-10 sm:pt-16">
       <motion.div
@@ -112,6 +114,8 @@ export default function Home({ progress, onSelect }: HomeProps) {
           Five small games, one direction at a time.
         </p>
       </motion.div>
+
+      <DailyCard progress={progress} onPlay={onPlayDaily} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {MODES.map((mode, i) => {

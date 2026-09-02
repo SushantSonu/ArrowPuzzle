@@ -26,9 +26,7 @@ export function levelConfig(level: number) {
  * only the tiles already on the board (i.e. the ones that would still be
  * present when this arrow's turn comes up).
  */
-export function generateClearLevel(level: number): ClearBoard {
-  const { size, count } = levelConfig(level);
-  const rand = mulberry32(level * 104729 + 17);
+export function buildClearBoard(size: number, count: number, rand: () => number): ClearBoard {
   const occupied = new Set<string>();
   const placed: ClearTile[] = [];
 
@@ -69,6 +67,18 @@ export function generateClearLevel(level: number): ClearBoard {
   }
 
   return { size, tiles: placed };
+}
+
+export function generateClearLevel(level: number): ClearBoard {
+  const { size, count } = levelConfig(level);
+  return buildClearBoard(size, count, mulberry32(level * 104729 + 17));
+}
+
+export const CLEAR_DAILY_SIZE = 5;
+export const CLEAR_DAILY_COUNT = 9;
+
+export function generateClearDaily(seed: number): ClearBoard {
+  return buildClearBoard(CLEAR_DAILY_SIZE, CLEAR_DAILY_COUNT, mulberry32(seed));
 }
 
 export interface MoveResult {
